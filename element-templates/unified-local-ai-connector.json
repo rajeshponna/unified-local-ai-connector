@@ -1,0 +1,378 @@
+{
+  "$schema": "https://unpkg.com/@camunda/zeebe-element-templates-json-schema/resources/schema.json",
+  "name": "Unified Local AI Connector",
+  "id": "io.github.rajeshponna.local-ai-chat",
+  "version": 2,
+  "description": "One Camunda connector for any local inference engine: Ollama, vLLM, or any OpenAI-compatible server. No per-request API costs, data stays on your infrastructure.",
+  "documentationRef": "https://github.com/rajeshponna/unified-local-ai-connector",
+  "category": {
+    "id": "connectors",
+    "name": "Connectors"
+  },
+  "appliesTo": [
+    "bpmn:Task"
+  ],
+  "elementType": {
+    "value": "bpmn:ServiceTask"
+  },
+  "icon": {
+    "contents": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgd2lkdGg9IjI0IiBoZWlnaHQ9IjI0Ij4KICA8cmVjdCB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHJ4PSI2IiBmaWxsPSIjMEU1RTZGIi8+CiAgPGcgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjRkZGN0U4IiBzdHJva2Utd2lkdGg9IjEuOCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIj4KICAgIDxwYXRoIGQ9Ik01IDYuNSBDOSA2LjUgMTAgMTIgMTMuNSAxMiIvPgogICAgPHBhdGggZD0iTTUgMTIgSDEzLjUiLz4KICAgIDxwYXRoIGQ9Ik01IDE3LjUgQzkgMTcuNSAxMCAxMiAxMy41IDEyIi8+CiAgICA8cGF0aCBkPSJNMTYuNSAxMiBIMTkuNSIvPgogIDwvZz4KICA8ZyBmaWxsPSIjRkZGN0U4Ij4KICAgIDxjaXJjbGUgY3g9IjUiIGN5PSI2LjUiIHI9IjEuMyIvPgogICAgPGNpcmNsZSBjeD0iNSIgY3k9IjEyIiByPSIxLjMiLz4KICAgIDxjaXJjbGUgY3g9IjUiIGN5PSIxNy41IiByPSIxLjMiLz4KICA8L2c+CiAgPGNpcmNsZSBjeD0iMTUiIGN5PSIxMiIgcj0iMi45IiBmaWxsPSIjRjVCMzAxIi8+Cjwvc3ZnPg=="
+  },
+  "groups": [
+    {
+      "id": "connection",
+      "label": "Connection"
+    },
+    {
+      "id": "prompt",
+      "label": "Prompt"
+    },
+    {
+      "id": "options",
+      "label": "Model options"
+    },
+    {
+      "id": "outputFormat",
+      "label": "Output format"
+    },
+    {
+      "id": "output",
+      "label": "Output mapping"
+    },
+    {
+      "id": "errors",
+      "label": "Error handling"
+    },
+    {
+      "id": "retries",
+      "label": "Retries"
+    }
+  ],
+  "properties": [
+    {
+      "type": "Hidden",
+      "value": "io.github.rajeshponna:local-ai-chat:1",
+      "binding": {
+        "type": "zeebe:taskDefinition",
+        "property": "type"
+      }
+    },
+    {
+      "id": "provider",
+      "label": "Provider",
+      "description": "The local AI engine to call. All three use the OpenAI-compatible /v1/chat/completions API.",
+      "group": "connection",
+      "type": "Dropdown",
+      "value": "ollama",
+      "choices": [
+        {
+          "name": "Ollama (development, laptops)",
+          "value": "ollama"
+        },
+        {
+          "name": "vLLM (production, high throughput)",
+          "value": "vllm"
+        },
+        {
+          "name": "Other OpenAI-compatible server",
+          "value": "openai"
+        }
+      ],
+      "binding": {
+        "type": "zeebe:input",
+        "name": "provider"
+      }
+    },
+    {
+      "id": "baseUrlOllama",
+      "label": "Base URL",
+      "description": "Ollama server root, without /v1. Use http://ollama:11434 for Ollama in Docker Compose, or http://host.docker.internal:11434 for Ollama installed on the host.",
+      "group": "connection",
+      "type": "String",
+      "feel": "optional",
+      "value": "http://ollama:11434",
+      "binding": {
+        "type": "zeebe:input",
+        "name": "baseUrl"
+      },
+      "constraints": {
+        "notEmpty": true
+      },
+      "condition": {
+        "property": "provider",
+        "equals": "ollama"
+      }
+    },
+    {
+      "id": "baseUrlVllm",
+      "label": "Base URL",
+      "description": "vLLM server root, without /v1. Use http://vllm:8000 when vLLM runs in the same Docker Compose.",
+      "group": "connection",
+      "type": "String",
+      "feel": "optional",
+      "value": "http://vllm:8000",
+      "binding": {
+        "type": "zeebe:input",
+        "name": "baseUrl"
+      },
+      "constraints": {
+        "notEmpty": true
+      },
+      "condition": {
+        "property": "provider",
+        "equals": "vllm"
+      }
+    },
+    {
+      "id": "baseUrlOther",
+      "label": "Base URL",
+      "description": "Server root, without /v1, e.g. http://host.docker.internal:1234 for LM Studio.",
+      "group": "connection",
+      "type": "String",
+      "feel": "optional",
+      "binding": {
+        "type": "zeebe:input",
+        "name": "baseUrl"
+      },
+      "constraints": {
+        "notEmpty": true
+      },
+      "condition": {
+        "property": "provider",
+        "equals": "openai"
+      }
+    },
+    {
+      "id": "modelOllama",
+      "label": "Model",
+      "description": "Enter the name of a model running in your Ollama engine. Find it with: docker exec -it ollama ollama list (e.g. qwen2.5:1.5b)",
+      "group": "connection",
+      "type": "String",
+      "feel": "optional",
+      "binding": {
+        "type": "zeebe:input",
+        "name": "model"
+      },
+      "constraints": {
+        "notEmpty": true
+      },
+      "condition": {
+        "property": "provider",
+        "equals": "ollama"
+      }
+    },
+    {
+      "id": "modelVllm",
+      "label": "Model",
+      "description": "Enter the name of the model running in your vLLM engine (its --served-model-name). Find it with: curl http://localhost:8000/v1/models (e.g. qwen2.5-1.5b-awq)",
+      "group": "connection",
+      "type": "String",
+      "feel": "optional",
+      "binding": {
+        "type": "zeebe:input",
+        "name": "model"
+      },
+      "constraints": {
+        "notEmpty": true
+      },
+      "condition": {
+        "property": "provider",
+        "equals": "vllm"
+      }
+    },
+    {
+      "id": "modelOther",
+      "label": "Model",
+      "description": "Enter the name of the model running in your inference engine. Find it with: curl <base URL>/v1/models",
+      "group": "connection",
+      "type": "String",
+      "feel": "optional",
+      "binding": {
+        "type": "zeebe:input",
+        "name": "model"
+      },
+      "constraints": {
+        "notEmpty": true
+      },
+      "condition": {
+        "property": "provider",
+        "equals": "openai"
+      }
+    },
+    {
+      "id": "apiKey",
+      "label": "API key",
+      "description": "Optional. Only needed if your server requires one. Use a secret, e.g. {{secrets.LOCAL_AI_API_KEY}}",
+      "group": "connection",
+      "type": "String",
+      "feel": "optional",
+      "optional": true,
+      "binding": {
+        "type": "zeebe:input",
+        "name": "apiKey"
+      }
+    },
+    {
+      "id": "timeoutSeconds",
+      "label": "Timeout (seconds)",
+      "description": "How long to wait for the answer. Local models can be slow on the first call while they load.",
+      "group": "connection",
+      "type": "String",
+      "feel": "optional",
+      "value": "120",
+      "optional": true,
+      "binding": {
+        "type": "zeebe:input",
+        "name": "timeoutSeconds"
+      }
+    },
+    {
+      "id": "systemPrompt",
+      "label": "System prompt",
+      "description": "Optional instructions that shape how the model behaves",
+      "group": "prompt",
+      "type": "Text",
+      "feel": "optional",
+      "optional": true,
+      "binding": {
+        "type": "zeebe:input",
+        "name": "systemPrompt"
+      }
+    },
+    {
+      "id": "userPrompt",
+      "label": "User prompt",
+      "description": "The message sent to the model. Use FEEL to include process variables, e.g. =\"Summarize: \" + text",
+      "group": "prompt",
+      "type": "Text",
+      "feel": "optional",
+      "binding": {
+        "type": "zeebe:input",
+        "name": "userPrompt"
+      },
+      "constraints": {
+        "notEmpty": true
+      }
+    },
+    {
+      "id": "temperature",
+      "label": "Temperature",
+      "description": "0 = focused and repeatable, 1 = more creative",
+      "group": "options",
+      "type": "String",
+      "feel": "optional",
+      "value": "0.2",
+      "optional": true,
+      "binding": {
+        "type": "zeebe:input",
+        "name": "temperature"
+      }
+    },
+    {
+      "id": "maxTokens",
+      "label": "Max tokens",
+      "description": "Maximum length of the answer in tokens",
+      "group": "options",
+      "type": "String",
+      "feel": "optional",
+      "value": "512",
+      "optional": true,
+      "binding": {
+        "type": "zeebe:input",
+        "name": "maxTokens"
+      }
+    },
+    {
+      "id": "outputMode",
+      "label": "Output mode",
+      "description": "Text returns a plain answer. JSON returns structured output, parsed into the 'json' result field.",
+      "group": "outputFormat",
+      "type": "Dropdown",
+      "value": "text",
+      "choices": [
+        {
+          "name": "Text",
+          "value": "text"
+        },
+        {
+          "name": "JSON",
+          "value": "json"
+        }
+      ],
+      "binding": {
+        "type": "zeebe:input",
+        "name": "outputMode"
+      }
+    },
+    {
+      "id": "jsonSchema",
+      "label": "JSON schema",
+      "description": "Optional. The answer is forced to match this schema (strictest on vLLM). Leave empty for any valid JSON object.",
+      "group": "outputFormat",
+      "type": "Text",
+      "optional": true,
+      "binding": {
+        "type": "zeebe:input",
+        "name": "jsonSchema"
+      },
+      "condition": {
+        "property": "outputMode",
+        "equals": "json"
+      }
+    },
+    {
+      "label": "Result variable",
+      "description": "Name of the variable that stores the full result (answer, json, tokens, durationMs, provider)",
+      "group": "output",
+      "type": "String",
+      "binding": {
+        "type": "zeebe:taskHeader",
+        "key": "resultVariable"
+      }
+    },
+    {
+      "label": "Result expression",
+      "description": "Map the result into process variables, e.g. ={ aiAnswer: answer }",
+      "group": "output",
+      "type": "Text",
+      "feel": "required",
+      "binding": {
+        "type": "zeebe:taskHeader",
+        "key": "resultExpression"
+      }
+    },
+    {
+      "label": "Error expression",
+      "description": "Turn connector errors into BPMN errors. Codes: AI_TIMEOUT, AI_UNREACHABLE, AI_HTTP_<status>, AI_INVALID_JSON, AI_INVALID_SCHEMA, AI_INVALID_INPUT",
+      "group": "errors",
+      "type": "Text",
+      "feel": "required",
+      "binding": {
+        "type": "zeebe:taskHeader",
+        "key": "errorExpression"
+      }
+    },
+    {
+      "label": "Retries",
+      "description": "Number of retries if the call fails",
+      "group": "retries",
+      "type": "String",
+      "value": "3",
+      "binding": {
+        "type": "zeebe:taskDefinition",
+        "property": "retries"
+      }
+    },
+    {
+      "label": "Retry backoff",
+      "description": "Wait between retries (ISO-8601), e.g. PT30S. Gives a restarting model server time to come back.",
+      "group": "retries",
+      "type": "String",
+      "value": "PT30S",
+      "binding": {
+        "type": "zeebe:taskHeader",
+        "key": "retryBackoff"
+      }
+    }
+  ]
+}

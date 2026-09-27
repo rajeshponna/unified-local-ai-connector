@@ -1,0 +1,223 @@
+# Camunda 8.9 Self-Managed (lightweight) + Unified Local AI Connector + inference engines
+# Based on Camunda's official docker-compose.yaml. For local development, not production.
+#
+# BEFORE THE FIRST RUN (one time) - these folders and files are NOT created for you
+#   1. Create the models folder, organized by format:
+#        mkdir -p ~/aimodels/{huggingface,gguf,ollama,cache}
+#        sudo chown -R $USER:$USER ~/aimodels
+#      ~/aimodels/huggingface   vLLM models (and SGLang, TGI)
+#      ~/aimodels/gguf          GGUF files (importable into Ollama)
+#      ~/aimodels/ollama        Ollama's own store
+#      ~/aimodels/cache         download cache
+#   2. Download a model for vLLM (no Python needed, the vLLM image has the download tool):
+#        docker run --rm -v ~/aimodels/huggingface:/models --entrypoint hf vllm/vllm-openai:latest \
+#          download Qwen/Qwen2.5-1.5B-Instruct-AWQ --local-dir /models/qwen2.5-1.5b-awq
+#        sudo chown -R $USER:$USER ~/aimodels
+#   3. Pull a model for Ollama (after starting it):
+#        docker compose up -d ollama
+#        docker exec -it ollama ollama pull qwen2.5:1.5b
+#   4. Put unified-local-ai-connector-0.1.0.jar and connector-secrets.txt next to this file.
+#   5. Validate this file:
+#        docker compose --profile "*" config --quiet     (no output = valid)
+#
+# HOW TO RUN
+#   docker compose up -d                                       -> Camunda only (engines stay off)
+#   docker compose up -d orchestration connectors vllm         -> Camunda + vLLM
+#   docker compose up -d orchestration connectors ollama       -> Camunda + Ollama
+#   docker compose up -d orchestration connectors ollama vllm  -> Camunda + Ollama + vLLM
+#   docker compose up -d ollama vllm                           -> only the engines (Camunda already running)
+#   docker compose --profile engine up -d                      -> Camunda + every engine in the file
+#
+# HOW TO STOP
+#   docker compose stop vllm                                   -> stop one engine
+#   docker compose stop ollama vllm                            -> stop only the engines
+#   docker compose --profile "*" down                          -> stop everything, including engines
+#   (a plain "docker compose down" skips the engines and leaves them running)
+#
+# CHECK
+#   docker compose --profile "*" config --services            -> list all service names
+#   docker ps                                                  -> what is running now
+#
+# Every engine has profiles: ["engine"], so a plain "docker compose up -d" never
+# starts them by accident. Naming an engine always starts it.
+#
+# GPU NOTE: a 4 GB GPU cannot hold several engines at once. Start one GPU engine
+# at a time, or run Ollama on CPU by removing its deploy: section.
+
+services:
+  # ---------------------------------------------------------------------------
+  # CAMUNDA
+  # ---------------------------------------------------------------------------
+  camunda-data-init:
+    image: camunda/camunda:${CAMUNDA_VERSION}
+    user: "0:0"
+    entrypoint: ["/bin/sh", "-c", "chown -R 1001:1001 /usr/local/camunda/camunda-data && chmod 775 /usr/local/camunda/camunda-data"]
+    volumes:
+      - camunda-data:/usr/local/camunda/camunda-data
+    restart: "no"
+
+  orchestration: # Consolidated Zeebe + Operate + Tasklist
+    image: camunda/camunda:${CAMUNDA_VERSION}
+    container_name: orchestration
+    ports:
+      - "26500:26500"
+      - "9600:9600"
+      - "8080:8080"
+    environment:
+      - JAVA_TOOL_OPTIONS="-XX:+PrintFlagsFinal"
+    mem_limit: 1g
+    restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/9600 && echo -e \"GET /actuator/health/status HTTP/1.1\r\nHost: localhost\r\n\r\n\" >&3 && head -n 1 <&3'"]
+      interval: 1s
+      retries: 30
+      start_period: 30s
+    volumes:
+      - camunda:/usr/local/camunda/data
+      - camunda-data:/usr/local/camunda/camunda-data
+      - ./driver-lib:/driver-lib:ro
+    configs:
+      - source: orchestration-config
+        target: /usr/local/camunda/config/application.yaml
+    networks:
+      - camunda
+    depends_on:
+      camunda-data-init:
+        condition: service_completed_successfully
+
+  # Camunda Connectors, with the Unified Local AI Connector jar loaded from /opt/custom
+  connectors:
+    extra_hosts:
+      - "host.docker.internal:host-gateway"   # reach AI servers installed on the host
+    image: camunda/connectors-bundle:${CAMUNDA_CONNECTORS_VERSION}
+    container_name: connectors
+    ports:
+      - "8086:8080"
+    environment:
+      - LOADER_PATH=/opt/custom
+      - management.endpoints.web.exposure.include=health,configprops
+      - management.endpoint.health.probes.enabled=true
+    env_file: connector-secrets.txt
+    mem_limit: 512m
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:8080/actuator/health/readiness"]
+      interval: 30s
+      timeout: 1s
+      retries: 5
+      start_period: 30s
+    configs:
+      - source: connectors-config
+        target: application.yaml
+    volumes:
+      - ./unified-local-ai-connector-0.1.0.jar:/opt/custom/unified-local-ai-connector.jar
+    networks:
+      - camunda
+    depends_on:
+      orchestration:
+        condition: service_healthy
+
+  # ---------------------------------------------------------------------------
+  # INFERENCE ENGINES  (start by name: docker compose up -d <name> ...)
+  # ---------------------------------------------------------------------------
+
+  # vLLM: production engine, NVIDIA GPU required
+  # Connector: Provider = vLLM, Base URL = http://vllm:8000, Model = local-model
+  # Test:      curl http://localhost:8000/v1/models
+  vllm:
+    image: vllm/vllm-openai:latest
+    container_name: vllm
+    profiles: ["engine"]
+    command: >
+      --model ${VLLM_MODEL:-/models/qwen2.5-1.5b-awq}
+      --served-model-name ${VLLM_MODEL_NAME:-qwen2.5-1.5b-awq}
+      --gpu-memory-utilization ${VLLM_GPU_MEMORY:-0.7}
+      --max-model-len ${VLLM_MAX_LEN:-4096}
+      --enforce-eager
+      --enable-auto-tool-choice
+      --tool-call-parser ${VLLM_TOOL_PARSER:-hermes}
+    ports:
+      - "8000:8000"
+    environment:
+      - HF_HOME=/cache
+    volumes:
+      - ~/aimodels/huggingface:/models
+      - ~/aimodels/cache:/cache
+    restart: unless-stopped
+    networks:
+      - camunda
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  # Ollama: development engine, GPU or CPU
+  # Connector: Provider = Ollama, Base URL = http://ollama:11434, Model = mistral:latest
+  # Models:    docker exec -it ollama ollama list   /   docker exec -it ollama ollama pull qwen2.5:1.5b
+  # Test:      curl http://localhost:11434/v1/models
+  # CPU only:  delete the deploy: section below
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    profiles: ["engine"]
+    ports:
+      - "11434:11434"
+    volumes:
+      - ~/aimodels/ollama:/root/.ollama
+      - ~/aimodels/gguf:/gguf:ro
+    restart: unless-stopped
+    networks:
+      - camunda
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  # ADDING A NEW ENGINE: copy this pattern, fill in the image and model folder,
+  # then start it with: docker compose up -d newengine
+  # newengine:
+  #   image: <image>
+  #   container_name: newengine
+  #   profiles: ["engine"]
+  #   command: >
+  #     <start options, model path under /models>
+  #   ports:
+  #     - "<free host port>:<engine port>"
+  #   volumes:
+  #     - ~/aimodels/<format folder>:/models:ro
+  #   restart: unless-stopped
+  #   networks:
+  #     - camunda
+  #   deploy:
+  #     resources:
+  #       reservations:
+  #         devices:
+  #           - driver: nvidia
+  #             count: all
+  #             capabilities: [gpu]
+
+volumes:
+  camunda:
+  camunda-data:
+
+networks:
+  camunda:
+    name: camunda
+
+configs:
+  connectors-config:
+    content: |
+      camunda:
+        client:
+          mode: self-managed
+          grpc-address: http://orchestration:26500
+          rest-address: http://orchestration:8080
+
+  orchestration-config:
+    file: ./configuration/${ORCHESTRATION_CONFIG_FILE:-application-h2.yaml}

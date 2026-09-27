@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>io.github.rajeshponna</groupId>
+  <artifactId>unified-local-ai-connector</artifactId>
+  <version>0.1.0</version>
+  <packaging>jar</packaging>
+
+  <name>Unified Local AI Connector for Camunda 8</name>
+  <description>One Camunda 8 connector for local AI: Ollama, vLLM, or any OpenAI-compatible server</description>
+
+  <properties>
+    <maven.compiler.release>21</maven.compiler.release>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <connector.version>8.9.5</connector.version>
+    <jackson.version>2.21.0</jackson.version>
+  </properties>
+
+  <dependencies>
+    <!-- Provided by the Camunda Connectors runtime at execution time -->
+    <dependency>
+      <groupId>io.camunda.connector</groupId>
+      <artifactId>connector-core</artifactId>
+      <version>${connector.version}</version>
+      <scope>provided</scope>
+    </dependency>
+    <dependency>
+      <groupId>com.fasterxml.jackson.core</groupId>
+      <artifactId>jackson-databind</artifactId>
+      <version>${jackson.version}</version>
+      <scope>provided</scope>
+    </dependency>
+  </dependencies>
+
+  <repositories>
+    <repository>
+      <id>central</id>
+      <url>https://repo1.maven.org/maven2/</url>
+    </repository>
+    <repository>
+      <id>connectors</id>
+      <name>Camunda Connectors Repository</name>
+      <url>https://artifacts.camunda.com/artifactory/connectors/</url>
+    </repository>
+  </repositories>
+
+  <build>
+    <finalName>unified-local-ai-connector-${project.version}</finalName>
+  </build>
+</project>
